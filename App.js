@@ -13,6 +13,7 @@ import {
   Image,
   TouchableOpacity
 } from 'react-native';
+import TimerCountdown from 'react-native-timer-countdown';
 
 var Sound = require('react-native-sound');
 
@@ -31,41 +32,41 @@ const fullTimeArr = [
       text: 'Warmup! Treadmill set to 3mph, incline set to 1.'
     },
     {
-      time: 5,
+      time: 4,
       color: BuGn,
       text: 'Get ready, 30 second sprint',
       audio: 'start'
     },
     {
-      time: 2,
+      time: 6,
       color: RdPu,
       text: 'GO GO GO! 30 SECOND SPRINT!'
     },
     {
-      time: 2,
+      time: 6,
       color: PuBuGn,
       text: 'Ok Rest, 2 minutes. Not so bad.',
       audio: 'finish'
     },
     {
-      time: 2,
+      time: 4,
       color: BuGn,
       text: 'Get ready, 45 second sprint',
       audio: 'start'
     },
     {
-      time: 2,
+      time: 6,
       color: RdPu,
       text: 'GO GO GO! 45 SECOND SPRINT!'
     },
     {
-      time: 2,
+      time: 6,
       color: PuBuGn,
       text: 'Ok Rest, 2 minutes. Still ok.',
       audio: 'finish'
     },
     {
-      time: 2,
+      time: 4,
       color: BuGn,
       text: 'Get ready, 1 minute sprint',
       audio: 'start'
@@ -186,31 +187,31 @@ const fullTimeArr = [
   ];
 
 type Props = {};
+
+//Disable warning coming from timer app for now
+console.disableYellowBox = true;
+
 export default class App extends Component<Props> {
 
   constructor(props) {
     super(props);
+
     this.state = {
       timeData: {
         color: Spectral,
         text: '',
       },
-      buttonText: 'Start'
+      buttonText: 'Start',
+      started: false
     };
 
-    Sound.setCategory('Playback');
-    this.startSound = new Sound('start-beeps.wav', Sound.MAIN_BUNDLE, (error) => {
-      if (error) {
-        alert('failed to load the sound', error);
-        return;
-      }
-    });
-    this.finishSound = new Sound('achievement.wav', Sound.MAIN_BUNDLE, (error) => {
-      if (error) {
-        alert('failed to load the sound', error);
-        return;
-      }
-    });
+    //Use Ambient option, this will not pause background app music
+    //This sets AVAudioSessionCategoryAmbient, plus mixWithOthers option in the current AVAudioSession
+    Sound.setCategory('Ambient', true);
+
+    this.startSound = new Sound('start-beeps.wav', Sound.MAIN_BUNDLE);
+
+    this.finishSound = new Sound('achievement.wav', Sound.MAIN_BUNDLE);
   }
 
   render() {
@@ -228,11 +229,27 @@ export default class App extends Component<Props> {
           source={this.state.timeData.color}
         />
         <Text style={styles.header}>
-          Sprint Loser
+          Sprint Loser!
         </Text>
         <Text style={styles.instructions}>
           {this.state.timeData.text}
         </Text>
+        {
+          this.state.timeData.hasOwnProperty('time') &&
+          <TimerCountdown
+            initialSecondsRemaining={this.state.timeData.time * 1000}
+            allowFontScaling={true}
+            style={styles.timer}
+          />
+        }
+        {
+          this.state.timeData.started &&
+          <TouchableOpacity style={styles.buttonWrapper}
+            onPress={this.reset}
+            >
+             <Text style={styles.buttonText}>{this.state.buttonText}</Text>
+          </TouchableOpacity>
+        }
         <TouchableOpacity style={styles.buttonWrapper}
           onPress={this.start}
           >
@@ -243,40 +260,70 @@ export default class App extends Component<Props> {
   }
 
   start = () => {
-    //clear timer if restarting
+    //clear timer
     if(typeof this.timer !== 'undefined') {
       window.clearTimeout(this.timer);
     }
-    //copy time array, since we are shifting
-    this.timeArr = [...fullTimeArr];
 
-    this.setState({
-        buttonText: 'Start Over'
+    //Stop any playing audio
+    this.startSound.stop();
+    this.finishSound.stop();
+
+    if(this.state.started === true) {
+      //If already started, clear timedata, reset to initial state
+      this.setState({
+        timeData: {
+          color: Spectral,
+          text: '',
+        },
+        buttonText: 'Start',
+        started: false
       });
+    } else {
+      //If not already started then start the timer
 
-    //start timer
-    this.setTimer();
-  }
+      //copy time array, since we are modifying it by shifting
+      this.timeArr = [...fullTimeArr];
+
+      this.setState({
+          buttonText: 'Start Over',
+          started: true
+        });
+
+      //start timer
+      this.setTimer();
+    }
+  };
 
   setTimer = () => {
-    //get first time
+    //Get next time obj from time array
     let timeData = this.timeArr.shift();
 
     if(typeof timeData !== 'undefined') {
+      //Set new time data to state
       this.setState({
         timeData: timeData
       });
+
+      //Change to milliseconds
       let time = timeData.time * 1000;
 
+      //Play audio clip if needed
       if(timeData.hasOwnProperty('audio')) {
         if(timeData.audio === 'start') {
-          this.startSound.play();
+          this.startSound.play(() => {
+              this.startSound.stop();
+          });
         } else if(timeData.audio === 'finish') {
-          this.finishSound.play();
+          this.finishSound.play(() => {
+            this.finishSound.stop();
+          });
         }
       }
 
+      //Start timeout
       this.timer = setTimeout(() => {
+        //Move to next time section
         this.setTimer();
       }, time);
     }
@@ -287,7 +334,7 @@ export default class App extends Component<Props> {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#F5FCFF',
   },
@@ -302,6 +349,7 @@ const styles = StyleSheet.create({
     color: '#333333',
     margin: 30,
     fontSize: 40,
+    height: 250
   },
   buttonWrapper: {
     backgroundColor: 'rgba(222, 222, 222, 0.4)',
@@ -310,9 +358,14 @@ const styles = StyleSheet.create({
     borderColor: '#6B6B6B',
     overflow: 'hidden',
     padding: 10,
+    marginBottom: 60,
   },
   buttonText: {
     fontSize: 20,
     color: '#3A3A3A'
   },
+  timer: {
+    fontSize: 30,
+    height:50
+  }
 });
